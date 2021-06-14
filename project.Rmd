@@ -1,0 +1,201 @@
+---
+title: "Data Anlysis"
+author: "410473074 王姿文、410473002 林易霆、410473014 康益豪、410478016 張維翰"
+date: "6/13/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message =  FALSE)
+```
+
+```{r library, include=FALSE}
+library(ggplot2)
+library(knitr);library(kableExtra);library(dplyr)#kable
+library(mice);library(lattice); library(purrr);library(VIM)#missing data
+library(dplyr);library(car);library(MASS);library(klaR)#LDA
+
+```
+
+```{r, include = FALSE}
+missing <- readRDS("RDS files/missing.rds")
+soil.int <- readRDS("RDS files/data.rds")
+error_rate_k <- readRDS("RDS files/k_plot.rds")
+lda <- readRDS("RDS files/lda.rds")
+training <- readRDS("RDS files/ldatr.rds")
+tmp <- readRDS("RDS files/tmp.rds")
+
+```
+
+## 1. 資料說明
+
+
+
+-------------------------------------------------
+
+## 2. 資料清理
+
+### 2.1 去除不必要的變數
+
+對於資料集而言沒有作用的變數以及存在嚴重關聯性問題的變數，都是我們不需要的。例如：`sci `、`scier `，這些變數都與`soil erosion`有關聯，對資料集而言即存在不同變數關聯性過高的問題。此外，例如：`musym`、`crop1`...等對於資料集而言均沒有作用。我們便以上述來去除對於資料集而言不需要的變數，並且我們會在EDA部分再詳細探討關聯性問題。
+
+### 2.2 遺失值處理
+
+我們接下來計算各變數的遺失值比例，若遺失值比例大於百分之八十即予去除該變數。下圖中的左圖為**Proportion Plot of Missing Data**，橫軸為變數名稱，縱軸為遺失值比例。若變數的遺失值比例超過百分之八十則予以刪除。由左圖可以看出只有一個變數`awc_r`存在遺失值比例(比例為0.003)，我們便對`awc_r`補值。
+
+```{r, echo=FALSE,results='hide',fig.keep='all', fig.align='center',out.extra='angle=90'}
+aggplot <- aggr(missing, numbers = T, prop = T, sortVars = T
+                       , col =  c('skyblue','orange'),labels = names(missing),
+                       cex.axis = 0.7, gap = 3
+                       ,ylabs = c("Histogram of missing data", "Patterns"))
+```
+
+-------------------------------------------------
+
+我們使用mice套件內的sample方法補值。下圖中的左圖為**Proportion Plot of Missing Data**，橫軸為變數名稱，縱軸為遺失值比例，可以看出最終無遺失值存在。刪減以及補值後共有`22`個變數，並以刪減完成的變數去做探索性資料分析。
+
+```{r, echo=FALSE,results='hide',fig.keep='all', fig.align='center',out.extra='angle=90'}
+aggreplot <- VIM::aggr(soil.int, numbers = T, prop = T, sortVars = T,
+                       labels = names(soil.int), cex.axis = 0.7, gap = 3,
+                       ylabs = c("Histogram of missing data", "Patterns"))
+```
+
+-------------------------------------------------
+
+## 3. 探索性資料分析
+
+交給大家填寫了~
+
+-------------------------------------------------
+
+## 4. 迴歸分析
+
+###以下分資料交給易霆
+我們首先將整理好的資料集`vehicle_aft_3`依照caret 套件的`createDataPartition`指令依照80%為Training, 20%為Testing data的方式進行資料分割。接著再將Training Data依照70% Training, 30% Validation 的比例再進行資料分割。我們先以Training Data來建構預測模型，再將模型套用到Testing Data以進行模型好壞的判定。
+
+設定土壤侵蝕程度(`soil_erosion`)為 Y變數的狀況下進行迴歸分析，並將`22`個變數都投入模型中進行配適，使用不同方法來比較不同方法的Accuracy。
+
+### 4.1 維翰
+
+-------------------------------------------------
+
+### 4.2 維翰
+
+-------------------------------------------------
+
+### 4.3 維翰
+
+-------------------------------------------------
+
+### 4.4 維翰
+
+-------------------------------------------------
+
+### 4.5 易霆
+
+-------------------------------------------------
+
+### 4.6 易霆
+
+-------------------------------------------------
+
+### 4.7 易霆
+
+-------------------------------------------------
+
+### 4.8 KNN
+
+這筆資料集的解釋變數包含`10`個類別變數，而其中有不少Nominal variables，然而這些變數無法計算歐幾里得距離矩陣，因此我們先移除這些變數來建立KNN模型。
+
+下圖為**Error Rate of Different K**，在Testing data中，使用不同的`k`的所跑出來的Error rate會不同，我們將挑選Error rate最低的k作為參數來建模。
+
+```{r, echo=FALSE}
+k_plot <- qplot(1:30, error_rate_k*100, 
+                xlab = "K",
+                ylab = "Error Rate %",
+                ylim = c(0,30), 
+                geom=c("point", "line"),colour="red")
+k_plot
+```
+
+-------------------------------------------------
+
+而我們將test1到test5所使用的不同`k`參數，以及代入模型後得出的不同Accuracy於下表呈現，最終得知平均Accuracy為76.6%。
+
+```{r, echo=FALSE}
+k <- c("9", "9", "13", "9", "7", " ")
+Accuracy <- c("0.765", "0.766", "0.764","0.767" , "0.767","0.766")
+data <- t(data.frame(k, Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5","test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+-------------------------------------------------
+
+### 4.9 LDA
+
+LDA的假設希望變數為常態，然而這筆資料集的變數並不是常態分佈，因此可能較不適合用LDA來建模。下圖為**Plot of LDA Model**，可以看出分類狀況。
+
+```{r, echo=FALSE}
+plot(lda, col="brown1")
+```
+
+-------------------------------------------------
+
+我們接著將test1到test5代入入模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為86.1%。
+
+```{r, echo=FALSE}
+Accuracy <- c("0.86", "0.862", "0.862","0.862" , "0.861", "0.861")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+
+-------------------------------------------------
+
+### 4.10 Boosting
+
+在Boosting建模前，我們首先將類別變數分別都轉成Dummy Variables，並設定`eta = 0.01`, `colsample_bytree = 0.95`, `subsample = 0.55`, `max_depth = 1`, `alpha = 0.1`，然後找出最佳的`nrounds`參數。下圖為**Avg.Performance in CV**，我們希望能找出Train Error與Test Error最小差距時的`nrounds`，並得出`nrounds = 4959
+`
+```{r, echo=FALSE}
+plot(x=1:nrow(tmp), y= tmp$train_error_mean, col='orange', xlab="nround", ylab="Error rate", main="Avg.Performance in CV") 
+points(x=1:nrow(tmp), y= tmp$test_error_mean, col='skyblue') 
+legend("topright", pch=1, col = c("orange", "skyblue"), 
+       legend = c("Train", "Test") )
+```
+
+-------------------------------------------------
+
+我們接著將test1到test5代入入模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為86.1%。
+
+```{r, echo=FALSE}
+Accuracy <- c("0.919", "0.923", "0.921","0.921" , "0.921", "0.921")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+
+-------------------------------------------------
+
+### 4.11 益豪
+
+-------------------------------------------------
+
+### 4.12 益豪
+
+-------------------------------------------------
+
+### 4.13 益豪
+
+-------------------------------------------------
+
+## 5. 結論
+
+做一個accuracy table~
