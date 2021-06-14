@@ -1,0 +1,399 @@
+---
+title: "巨量資料分析"
+author: "410473074 王姿文、410473002 林易霆、410473014 康益豪、410478016 張維翰"
+date: "2019/06/18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message =  FALSE)
+```
+
+```{r library, include=FALSE}
+library(ggplot2)
+library(knitr);library(kableExtra);library(dplyr)#kable
+library(mice);library(lattice); library(purrr);library(VIM)#missing data
+library(dplyr);library(car);library(MASS);library(klaR)#LDA
+library(rattle); library(randomForest)
+library(caret)
+library(LogicReg);library(doParallel)
+library(corrplot) #for correlation plot
+ library(gridExtra)
+ library(tidyverse); library(e1071);
+library(ROCR);library(pROC)
+```
+
+```{r, include = FALSE}
+missing <- readRDS("rds/missing.rds")
+soil.int <- readRDS("rds/data.rds")
+error_rate_k <- readRDS("rds/k_plot.rds")
+lda <- readRDS("rds/lda.rds")
+training <- readRDS("rds/ldatr.rds")
+tmp <- readRDS("rds/tmp.rds")
+tree_model <- readRDS("rds/tree_model.rds")
+randomforest_model <- readRDS("rds/randomforest_model.rds")
+soilcat <- readRDS("rds/soilcat.rds")
+soilcon <- readRDS("rds/soilcon.rds")
+soilcon2 <- readRDS("rds/soilcon2.rds")
+model1 <- readRDS("rds/model1.rds")
+model2 <- readRDS("rds/model2.rds")
+model3 <- readRDS("rds/model3.rds")
+model4 <- readRDS("rds/model4.rds")
+soil_test <- readRDS("rds/soil_test.rds")
+```
+
+## 壹. 資料說明
+
+###**資料名稱與來源**
+\ 
+
+* **資料名稱：**Soil erosion and organic matter for central Great Plains cropping systems under residue removal 
+
+\ 
+
+* **資料來源：**https://catalog.data.gov/dataset/soil-erosion-and-organic-matter-for-central-great-plains-cropping-systems-under-residue-re?fbclid=IwAR3cLtZiyGGUOoCgmnmMnCkQkPiQe2yGKGW_1qXyfgDWGbI5kO3E6Ivpkyg
+
+###**資料背景與原始目的**
+\  
+
+* **資料背景：**本資料集為美國農業部針對中部草原地帶之農地所做的土壤侵蝕(Soil Erosion)和土壤有機質(Soil Organic Carbon)的觀察型資料。
+
+\  
+
+* **原始目的：**本資料蒐集之目的為依照土壤侵蝕的程度來規劃美國農業部執行土壤環境維護之資源應用及分配。此資料即包含雨蝕、風蝕程度以及各種農地的基本資料、使用紀錄。
+
+###**資料變數**
+\ 
+
+* **原始資料：**本報告的原始資料共有37個變數，其中soil erosion 此變數本為一個連續型變數，我們根據網路上土壤報告，將其數值大於5設為severe，小於5設為minor，作為預測二元變數。其餘為農地、土壤本身性質、農作收穫量等等的解釋變數。
+
+\ 
+
+* **變數說明：**原始資料扣除ID、名稱、重複及有明顯共線性(soil erosion = watereros + winderos)之變數以後，具有15個類別變數、16個連續變數，共有31個實質變數，以下為各變數的說明。
+
+\newpage
+```{r variable names, echo = F}
+
+soil.var <- read.csv("soil_vars.csv")
+
+soil.var %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("hover", "striped","bordered"))
+  
+```
+###**研究問題**
+\
+* **Prediction:**希望藉由本資料去預測Soil Erosion(土壤侵蝕程度)變數。 
+
+-------------------------------------------------
+
+## 貳. 資料清理
+
+### 2.1 去除不必要的變數
+
+對於資料集而言沒有作用的變數以及存在嚴重關聯性問題的變數，都是我們不需要的。例如：`sci `、`scier `，這些變數都與`soil erosion`有關聯。此外，例如：`musym`、`crop1`...等對於資料集而言均沒有作用。我們便以上述來去除對於資料集而言不需要的變數，並且我們會在EDA部分再詳細探討關聯性問題。
+
+### 2.2 遺失值處理
+
+我們接下來計算各變數的遺失值比例，若遺失值比例大於百分之八十即予去除該變數。下圖中的左圖為**Proportion Plot of Missing Data**，橫軸為變數名稱，縱軸為遺失值比例。若變數的遺失值比例超過百分之八十則予以刪除。由左圖可以看出只有一個變數`awc_r`存在遺失值比例(比例為0.003)，我們便對`awc_r`補值。
+
+```{r, echo=FALSE,results='hide',fig.keep='all', fig.align='center',out.extra='angle=90'}
+aggplot <- aggr(missing, numbers = T, prop = T, sortVars = T
+                       , col =  c('skyblue','orange'),labels = names(missing),
+                       cex.axis = 0.7, gap = 3
+                       ,ylabs = c("Histogram of missing data", "Patterns"))
+```
+
+-------------------------------------------------
+
+我們使用mice套件內的sample方法補值。下圖中的左圖為**Proportion Plot of Missing Data**，橫軸為變數名稱，縱軸為遺失值比例，可以看出最終無遺失值存在。刪減以及補值後共有`22`個變數，並以刪減完成的變數去做探索性資料分析。
+
+```{r, echo=FALSE,results='hide',fig.keep='all', fig.align='center',out.extra='angle=90'}
+aggreplot <- VIM::aggr(soil.int, numbers = T, prop = T, sortVars = T,
+                       labels = names(soil.int), cex.axis = 0.7, gap = 3,
+                       ylabs = c("Histogram of missing data", "Patterns"))
+```
+
+-------------------------------------------------
+
+## 參. 探索性資料分析
+
+在執行EDA之前，我們先確認目前資料集的變數數量為`22`個變數。我們先將變數細分為類別型變數(categorical variables)以及連續型變數(continuous variables) ，其中有`11`個類別型變數以及`11`個連續型變數。
+
+### 3.1 類別型變數
+
+下圖為**Bar Plot of tfact**，橫軸為`tfact`，縱軸為`Count`。可以看出`tfact(土壤侵蝕容忍程度)`變數的值主要集中在5，代表該資料大部分的土壤，受侵蝕容忍程度是高的，也與我們的反應變數`soil erosion`相互對照。
+
+```{r , echo = F}
+ggplot(data = soilcat) + geom_bar(fill = "tan2", aes(x = factor(tfact))) + 
+    ggtitle("Bar Plot of tfact")+
+  ylab("Count") + xlab("tfact(土壤侵蝕容忍程度)")
+```
+
+### 3.2 連續型變數
+下圖為**Density Plot of yield3**，橫軸為`yield1`, `yield2`, `yield3`，縱軸為`Density`。此圖為第一年到第三年收穫量的Density plot，可以看出許多土地並無種植作物，因此此類土地汙染也較不嚴重。
+
+```{r , echo = F}
+p4 <- ggplot(soilcon, aes(x=yield1)) + geom_density() + xlab(paste0((colnames(dt)[col]), 'yield1' ,'\n', 'Skewness: ', round(skewness(soilcon$yield1, na.rm = TRUE), 2))) + theme( legend.key.width=unit(10,"inches"))
+p5 <- ggplot(soilcon, aes(x=yield2)) + geom_density() + xlab(paste0((colnames(dt)[col]), 'yield2' ,'\n', 'Skewness: ', round(skewness(soilcon$yield2, na.rm = TRUE), 2))) + theme( legend.key.width=unit(10,"inches"))
+p6 <- ggplot(soilcon, aes(x=yield3)) +  geom_density() + xlab(paste0((colnames(dt)[col]), 'yield3' ,'\n', 'Skewness: ', round(skewness(soilcon$yield3, na.rm = TRUE), 2))) + theme( legend.key.width=unit(10,"inches"))
+gridExtra::grid.arrange(p4, p5, p6, ncol=2)
+```
+
+下圖為**Correlation Plot 1**，橫軸為變數名稱，色條為相關係數，色條顏色越接近藍色則正關聯性越高，越接近紅色則負關聯性越高。由下圖可得知存在不同變數關聯性過高問題。我們便去除對於資料集而言不需要的變數。
+
+```{r , echo = F}
+corr.soil <- cor(soilcon2)
+corrplot(corr.soil, method = "color", diag = F, type = "upper",
+         tl.cex = 0.5 )
+```
+
+下圖為**Correlation Plot 2**，是我們刪除一些較關聯性過高的變數後所繪製的。橫軸為變數名稱，色條為相關係數，色條顏色越接近藍色則正關聯性越高，越接近紅色則負關聯性越高，可看出已無關聯性過高的問題。
+
+```{r , echo = F}
+soilcon2 <- soilcon2 %>%
+  dplyr::select(-c(sci, scier))
+corr.soil <- cor(soilcon2)
+corrplot(corr.soil, method = "color", diag = F, type = "upper",
+         tl.cex = 0.5 )
+```
+
+-------------------------------------------------
+
+## 肆. 預測分析
+
+###以下分資料交給易霆
+我們首先將整理好的資料集`vehicle_aft_3`依照caret 套件的`createDataPartition`指令依照80%為Training, 20%為Testing data的方式進行資料分割。接著再將Training Data依照70% Training, 30% Validation 的比例再進行資料分割。我們先以Training Data來建構預測模型，再將模型套用到Testing Data以進行模型好壞的判定。
+
+設定土壤侵蝕程度(`soil_erosion`)為 Y變數的狀況下進行迴歸分析，並將`22`個變數都投入模型中進行配適，使用不同方法來比較不同方法的Accuracy。
+
+### 4.1 logistic regression without any variable/model selection
+使用`Caret`套件`train`函數，並帶入10 fold的cross validation去建立模型。
+
+我們接著將test1到test5代入入模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為91.4%。
+```{r, echo=FALSE}
+Accuracy <- c("0.913", "0.914", "0.914","0.913" , "0.914", "0.914")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+-------------------------------------------------
+
+### 4.2 logistic regression with forward selection
+在執行向前逐步迴歸建模前，我們先分別建立包含全部X變數的`Full model`和只包含截距項的`Null model`，之後再帶入我們的向前逐步迴歸去建立模型。下圖為Test data預測值與實際值的ROC圖。
+
+```{r, echo=FALSE}
+test_prob <- predict(model2, newdata = soil_test, type = "response")
+test_roc <- roc(soil_test$soil_erosion ~ test_prob, plot = TRUE, print.auc = TRUE)
+```
+
+
+
+我們接著將test1到test5代入入模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為91.2%。
+```{r, echo=FALSE}
+Accuracy <- c("0.911", "0.911", "0.912","0.912" , "0.911", "0.912")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+-------------------------------------------------
+
+### 4.3 logistic lasso regression
+將lambda值設為從0.0001到0.01去做建立模型。
+
+我們接著將test1到test5代入入模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為82.9%。
+```{r, echo=FALSE}
+Accuracy <- c("0.827", "0.832", "0.829","0.831" , "0.828", "0.829")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+-------------------------------------------------
+
+### 4.4 logistic rigid regression
+將lambda值設為從0.0001到0.01去做建立模型。
+
+
+我們接著將test1到test5代入入模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為82%。
+```{r, echo=FALSE}
+Accuracy <- c("0.818", "0.823", "0.820","0.821" , "0.820", "0.820")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+-------------------------------------------------
+
+### 4.5 易霆
+
+-------------------------------------------------
+
+### 4.6 易霆
+
+-------------------------------------------------
+
+### 4.7 易霆
+
+-------------------------------------------------
+
+### 4.8 KNN
+
+這筆資料集的解釋變數包含`10`個類別變數，而其中有不少Nominal variables，然而這些變數無法計算歐幾里得距離矩陣，因此我們先移除這些變數來建立KNN模型。
+
+下圖為**Error Rate of Different K**，在Testing data中，使用不同的`k`的所跑出來的Error rate會不同，我們將挑選Error rate最低的k作為參數來建模。
+
+```{r, echo=FALSE}
+k_plot <- qplot(1:30, error_rate_k*100, 
+                xlab = "K",
+                ylab = "Error Rate %",
+                ylim = c(0,30), 
+                geom=c("point", "line"),colour="red")
+k_plot
+```
+
+-------------------------------------------------
+
+而我們將test1到test5所使用的不同`k`參數，以及代入模型後得出的不同Accuracy於下表呈現，最終得知平均Accuracy為76.6%。
+
+```{r, echo=FALSE}
+k <- c("9", "9", "13", "9", "7", " ")
+Accuracy <- c("0.765", "0.766", "0.764","0.767" , "0.767","0.766")
+data <- t(data.frame(k, Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5","test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+-------------------------------------------------
+
+### 4.9 LDA
+
+LDA的假設希望變數為常態，然而這筆資料集的變數並不是常態分佈，因此可能較不適合用LDA來建模。下圖為**Plot of LDA Model**，可以看出分類狀況。
+
+```{r, echo=FALSE}
+plot(lda, col="brown1")
+```
+
+-------------------------------------------------
+
+我們接著將test1到test5代入入模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為86.1%。
+
+```{r, echo=FALSE}
+Accuracy <- c("0.86", "0.862", "0.862","0.862" , "0.861", "0.861")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+
+-------------------------------------------------
+
+### 4.10 Boosting
+
+在Boosting建模前，我們首先將類別變數分別都轉成Dummy Variables，並設定`eta = 0.01`, `colsample_bytree = 0.95`, `subsample = 0.55`, `max_depth = 1`, `alpha = 0.1`，然後找出最佳的`nrounds`參數。下圖為**Avg.Performance in CV**，我們希望能找出Train Error與Test Error最小差距時的`nrounds`，並得出`nrounds = 4959
+`
+```{r, echo=FALSE}
+plot(x=1:nrow(tmp), y= tmp$train_error_mean, col='orange', xlab="nround", ylab="Error rate", main="Avg.Performance in CV") 
+points(x=1:nrow(tmp), y= tmp$test_error_mean, col='skyblue') 
+legend("topright", pch=1, col = c("orange", "skyblue"), 
+       legend = c("Train", "Test") )
+```
+
+-------------------------------------------------
+
+我們接著將test1到test5代入入模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為86.1%。
+
+```{r, echo=FALSE}
+Accuracy <- c("0.919", "0.923", "0.921","0.921" , "0.921", "0.921")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+
+-------------------------------------------------
+
+### 4.11 Decision Tree
+
+決策樹是將資料進行一層一層的分割，而分割的原則是要得到最大的資訊增益。資訊量則是以`熵(Entropy)`以及 `Gini不純度(Gini Impurity)`為衡量標準。
+
+下圖為**決策樹模型**
+
+```{r, echo=FALSE}
+tree_plot <- fancyRpartPlot(tree_model$finalModel)
+```
+
+-------------------------------------------------
+
+我們接著將test1到test5代入進模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為81.7%。
+
+```{r, echo=FALSE}
+Accuracy <- c("0.815", "0.818", "0.818","0.816","0.818", "0.817")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+
+-------------------------------------------------
+
+### 4.12 Random Forest
+
+隨機森林是結合多棵決策樹，並加入隨機分配的訓練資料，以大幅增進最終的預測結果，然而決策樹的數量是透過下圖 `最小錯誤率`來進行選擇，最後選擇`tree=20`。
+
+```{r, echo=FALSE}
+plot(randomforest_model, lwd=2)
+legend("topright", colnames(randomforest_model$err.rate),
+          lty=1:4, lwd=2, col=1:4)
+```
+
+-------------------------------------------------
+
+於是，將模型參數`ntree`設為20，接著將test1到test5代入進模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為96.5%。
+
+```{r, echo=FALSE}
+Accuracy <- c("0.966", "0.965", "0.966","0.966","0.966", "0.965")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+
+-------------------------------------------------
+
+### 4.13 Bagging
+
+`Bagging` 是 `Bootstrap Aggregating` 的簡稱，透過統計學的 `Bootstrap sampling` 得到不同的訓練資料，然後根據這些訓練資料得到一系列的預測結果，並加以整合與平均，可以有效降低單一模型的變異程度。另外
+，一般在做 train 時會把手上的 label data 切成 training set 跟  validation set，但使用 bagging 的時候，不用如此，同樣可以擁有 validation 的效果，叫做 `Out-of-bag validation`。
+
+-------------------------------------------------
+
+最後以 `bootstrap replications = 27` ，所得到的 `Out-of-bag estimate of misclassification error`最小，因此將模型參數`nbagg`設為27，再將test1到test5代入進模型中，分別得出不同的Accuracy，於下表呈現，最終得知平均Accuracy為90.8%。
+
+```{r, echo=FALSE}
+Accuracy <- c("0.908", "0.908", "0.909","0.910","0.907", "0.908")
+data <- t(data.frame(Accuracy))
+colnames(data) <- c("test1","test2","test3","test4","test5", "test_average")
+kable(data) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center") %>%
+  column_spec(7, bold = T, color = "grey", background = "skyblue")
+```
+
+-------------------------------------------------
+
+## 5. 結論
+
+做一個accuracy table~

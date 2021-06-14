@@ -1,0 +1,56 @@
+---
+title: "巨量資料分析報告"
+author: "王姿文、林易霆、康益豪、張維翰"
+date: "2019年6月11日"
+output: html_document
+---
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = T)
+library(readr); library(tidyverse); 
+library(mice); library(lattice); library(purrr); library(VIM) 
+library(corrplot)
+library(stringi)
+library(knitr)
+library(kableExtra)
+```
+
+### **壹、資料名稱與來源**
+\  
+
+* **資料名稱：**Soil erosion and organic matter for central Great Plains cropping systems under residue removal 
+\  
+
+* **資料來源：**https://catalog.data.gov/dataset/soil-erosion-and-organic-matter-for-central-great-plains-cropping-systems-under-residue-re?fbclid=IwAR3cLtZiyGGUOoCgmnmMnCkQkPiQe2yGKGW_1qXyfgDWGbI5kO3E6Ivpkyg
+
+### **貳、資料原始研究目的與問題**
+\  
+
+* **資料背景：**本資料集為美國農業部針對中部草原地帶之農地所做的土壤侵蝕(Soil Erosion)和土壤有機質(Soil Organic Carbon)的觀察型資料。
+
+\  
+
+* **原始目的：**本資料蒐集之目的為依照土壤侵蝕的程度來規劃美國農業部執行土壤環境維護之資源應用及分配。此資料即包含雨蝕、風蝕程度以及各種農地的基本資料、使用紀錄。
+
+### **參、資料變數**
+\ 
+
+* **原始資料：**本報告的原始資料共有37個變數，其中soil erosion 此變數本為一個連續型變數，我們根據網路上土壤報告，將其數值大於5設為severe，小於5設為minor，作為預測二元變數。其餘為農地、土壤本身性質、農作收穫量等等的解釋變數。
+
+\ 
+
+* **變數說明：**原始資料扣除ID、名稱、重複及有明顯共線性(soil erosion = watereros + winderos)之變數以後，具有15個類別變數、16個連續變數，共有31個實質變數，表1為各變數的說明。
+
+\newpage
+```{r variable names, echo = F}
+
+soil.var <- read.csv("soil_vars.csv")
+
+soil.var %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("hover", "striped","bordered"))
+  
+```
+### **肆、研究問題**
+\  
+
+* **Prediction:**希望藉由本資料去預測Soil Erosion(土壤侵蝕程度)變數。 
